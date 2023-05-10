@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "reimpl"
+version = "0.1.0"
+description = "Reimplementation of the work arXiv:2101.11178"
+authors = ["Yixuan-Wang <tom-yixuan_wang@qq.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+transformers = "^4.28"
+dgl = "^1"
+einops = "^0.6.0"
+rich = "^13.3.2"
+typing-extensions = "^4.5.0"
+python-dotenv = "^1.0.0"
+typer = "^0.9.0"
+networkx = "^3"
+
+[tool.poetry.extras]
+runtime = ["torch", "accelerate"]
+
+[tool.poetry.group.dev.dependencies]
+pygraphviz = "^1.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

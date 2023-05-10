@@ -7,7 +7,11 @@ from typing import Optional, cast
 from torch.utils.data import Dataset, DataLoader, Subset, random_split
 import torch
 import transformers
-from transformers import get_linear_schedule_with_warmup, PreTrainedTokenizerFast, AutoTokenizer
+from transformers import (
+    get_linear_schedule_with_warmup,
+    PreTrainedTokenizerFast,
+    AutoTokenizer,
+)
 
 from rich.progress import Progress
 from rich.console import Group
@@ -20,12 +24,17 @@ from shared.console import console
 import shared.env as env
 from utils.baroque import BaroqueProgress
 
+
 from . import data, model, metrics
+
 
 @dataclass
 class PermOption:
     randomize_dataset: bool = field(kw_only=True)
-    split_dataset_ratio: tuple[float, float, float] = field(kw_only=True, default=(0.8, 0.1, 0.1))
+    split_dataset_ratio: tuple[float, float, float] = field(
+        kw_only=True, default=(0.8, 0.1, 0.1)
+    )
+
 
 @dataclass
 class PermTrainOption:
@@ -36,6 +45,7 @@ class PermTrainOption:
     epoch: int = field(kw_only=True)
     warmup_step: int = field(kw_only=True)
     shuffle: bool = field(kw_only=True)
+
 
 class Perm:
     option: PermOption
@@ -49,7 +59,7 @@ class Perm:
     dataset_valid: Subset[DataMmresList]
     dataset_test: Subset[DataMmresList]
 
-    def __init__(self, option: PermOption, *, state_dict = None) -> None:
+    def __init__(self, option: PermOption, *, state_dict=None) -> None:
         self.option = option
 
         with Status("Initializing model...", console=console) as status:
@@ -64,16 +74,19 @@ class Perm:
 
     def __init_model(self):
         return model.ModelPerm()
-    
+
     def __init_tokenizer(self) -> PreTrainedTokenizerFast:
-        return AutoTokenizer.from_pretrained(env.PRETRAINED_MODEL_PERM) # type: ignore
-    
+        return AutoTokenizer.from_pretrained(env.PRETRAINED_MODEL_PERM)  # type: ignore
+
     def __init_dataset(self):
-        self.dataset = data.DatasetPerm({
-            "max_graph_size": 16,
-            "min_graph_size": 3,
-            "seed": None,
-        }, self.tokenizer)
+        self.dataset = data.DatasetPerm(
+            {
+                "max_graph_size": 16,
+                "min_graph_size": 3,
+                "seed": None,
+            },
+            self.tokenizer,
+        )
 
         dataset_split_generator = (
             torch.Generator()
@@ -85,8 +98,10 @@ class Perm:
         split_count = [int(len_dataset * r) for r in self.option.split_dataset_ratio]
         split_count[-1] += len_dataset - sum(split_count)
 
-        self.dataset_train, self.dataset_valid, self.dataset_test = random_split(self.dataset, split_count, dataset_split_generator)
-    
+        self.dataset_train, self.dataset_valid, self.dataset_test = random_split(
+            self.dataset, split_count, dataset_split_generator
+        )
+
     def get_optimizer(self, train_option: PermTrainOption):
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -95,10 +110,14 @@ class Perm:
         )
 
         return optimizer
-    
+
     def set_device(self):
         with Status("Preparing device...", console=console) as status:
-            self.device: torch.device = torch.device(env.CUDA_DEVICE) if torch.cuda.is_available() else torch.device("cpu")
+            self.device: torch.device = (
+                torch.device(env.CUDA_DEVICE)
+                if torch.cuda.is_available()
+                else torch.device("cpu")
+            )
             self.model.to(self.device)
 
     def train(self, train_option: PermTrainOption):
@@ -106,12 +125,17 @@ class Perm:
             self.__init_dataset()
 
         with Status("Reshaping data....", console=console):
-            dataloader_train = cast(DataLoader[data.DataBatchPerm], DataLoader(
-                data.DatasetPermBalanced(self.dataset_train, train_option.batch_size),
-                batch_size=1,
-                shuffle=train_option.shuffle,
-                collate_fn=data.DatasetPermBalanced.collate,
-            ))
+            dataloader_train = cast(
+                DataLoader[data.DataBatchPerm],
+                DataLoader(
+                    data.DatasetPermBalanced(
+                        self.dataset_train, train_option.batch_size
+                    ),
+                    batch_size=1,
+                    shuffle=train_option.shuffle,
+                    collate_fn=data.DatasetPermBalanced.collate,
+                ),
+            )
 
         optimizer = self.get_optimizer(train_option)
         scheduler = get_linear_schedule_with_warmup(
@@ -121,6 +145,7 @@ class Perm:
         )
 
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%m%dT%H%M%S")
 
         self.model: model.ModelPerm
@@ -130,68 +155,106 @@ class Perm:
             task_train = progress.add_task("Training...", total=train_option.epoch)
 
             for epoch in range(train_option.epoch):
-                progress.update(task_train, description=f"Training, epoch {epoch + 1} of {train_option.epoch}")
+                progress.update(
+                    task_train,
+                    description=f"Training, epoch {epoch + 1} of {train_option.epoch}",
+                )
                 task_epoch = progress.add_task("", total=len(dataloader_train))
-                
+
                 metrics_train = metrics.MetricsPerm()
                 self.model.train()
 
                 for idx, batch in enumerate(dataloader_train):
                     batch: data.DataBatchPerm
-                    progress.update(task_epoch, description=f"Batch {1 + idx} of {len(dataloader_train)}")
-                    status.update(f"loss {metrics_train.loss:.3f}, accuracy {metrics_train.accuracy():.3%}, precision {metrics_train.precision():.3%}, recall {metrics_train.recall():.3%}")
+                    progress.update(
+                        task_epoch,
+                        description=f"Batch {1 + idx} of {len(dataloader_train)}",
+                    )
+                    status.update(
+                        f"loss {metrics_train.loss:.3f}, accuracy {metrics_train.accuracy():.3%}, precision {metrics_train.precision():.3%}, recall {metrics_train.recall():.3%}"
+                    )
 
                     optimizer.zero_grad(set_to_none=True)
                     batch.move(self.device)
                     prediction = self.model(batch)
 
-                    loss = metrics_train.accept(prediction=prediction, target=batch.target, batch=batch)
+                    loss = metrics_train.accept(
+                        prediction=prediction, target=batch.target, batch=batch
+                    )
                     loss.backward()
                     optimizer.step()
                     scheduler.step()
                     progress.advance(task_epoch)
 
-                console.log(f"epoch {epoch}, train: loss {metrics_train.loss:.3f}, accuracy {metrics_train.accuracy():.3%}, precision {metrics_train.precision():.3%}, recall {metrics_train.recall():.3%}")
+                console.log(
+                    f"epoch {epoch}, train: loss {metrics_train.loss:.3f}, accuracy {metrics_train.accuracy():.3%}, precision {metrics_train.precision():.3%}, recall {metrics_train.recall():.3%}"
+                )
 
-                metrics_valid = self.eval(self.dataset_valid, progress=progress, status=status)
-                console.log(f"epoch {epoch}, valid: loss {metrics_valid.loss:.3f}, accuracy {metrics_valid.accuracy():.3%}, precision {metrics_valid.precision():.3%}, recall {metrics_valid.recall():.3%}")
+                metrics_valid = self.eval(
+                    self.dataset_valid, progress=progress, status=status
+                )
+                console.log(
+                    f"epoch {epoch}, valid: loss {metrics_valid.loss:.3f}, accuracy {metrics_valid.accuracy():.3%}, precision {metrics_valid.precision():.3%}, recall {metrics_valid.recall():.3%}"
+                )
 
         self.model = self.model.to("cpu")
 
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%m%dT%H%M%S")
         torch.save(self.model.state_dict(), f"models/weights-{timestamp}.pth")
 
-    def eval(self, dataset_eval, *, progress: Optional[Progress] = None, status: Optional[Status] = None):
+    def eval(
+        self,
+        dataset_eval,
+        *,
+        progress: Optional[Progress] = None,
+        status: Optional[Status] = None,
+    ):
         self.model.eval()
 
-        if status: status.update("Reshapping data...")
+        if status:
+            status.update("Reshapping data...")
 
         dataloader_eval = DataLoader(
             data.DatasetPermBalanced(dataset_eval, 16),
             batch_size=1,
             shuffle=False,
             collate_fn=data.DatasetPermBalanced.collate,
-        ) # type: ignore
+        )  # type: ignore
         dataloader_eval: DataLoader[data.DataBatchPerm]
 
-        if status: status.update("")
+        if status:
+            status.update("")
 
-        task_eval = progress.add_task("Evaling...", total=len(dataloader_eval)) if progress else None
+        task_eval = (
+            progress.add_task("Evaling...", total=len(dataloader_eval))
+            if progress
+            else None
+        )
 
         metrics_eval = metrics.MetricsPerm()
-        
+
         with torch.no_grad():
             for idx, batch in enumerate(dataloader_eval):
-                if progress is not None and task_eval is not None and status is not None:
+                if (
+                    progress is not None
+                    and task_eval is not None
+                    and status is not None
+                ):
                     progress.update(task_eval, description=f"Evaling, Batch {idx}")
-                    status.update(f"loss {metrics_eval.loss:.3f}, accuracy {metrics_eval.accuracy():.3%}, precision {metrics_eval.precision():.3%}, recall {metrics_eval.recall():.3%}")
+                    status.update(
+                        f"loss {metrics_eval.loss:.3f}, accuracy {metrics_eval.accuracy():.3%}, precision {metrics_eval.precision():.3%}, recall {metrics_eval.recall():.3%}"
+                    )
 
                 batch.move(self.device)
                 prediction = self.model(batch)
 
-                _ = metrics_eval.accept(prediction=prediction, target=batch.target, batch=batch)
-                if progress is not None and task_eval is not None: progress.advance(task_eval)
+                _ = metrics_eval.accept(
+                    prediction=prediction, target=batch.target, batch=batch
+                )
+                if progress is not None and task_eval is not None:
+                    progress.advance(task_eval)
 
         if progress is not None and task_eval is not None:
             progress.remove_task(task_eval)
@@ -204,6 +267,10 @@ class Perm:
         self.set_device()
 
         with BaroqueProgress() as (live, progress, status):
-            metrics_eval = self.eval(self.dataset_test, progress=progress, status=status)
-        
-        console.log(f"test: loss {metrics_eval.loss:.3f}, accuracy {metrics_eval.accuracy():.3%}, precision {metrics_eval.precision():.3%}, recall {metrics_eval.recall():.3%}")
+            metrics_eval = self.eval(
+                self.dataset_test, progress=progress, status=status
+            )
+
+        console.log(
+            f"test: loss {metrics_eval.loss:.3f}, accuracy {metrics_eval.accuracy():.3%}, precision {metrics_eval.precision():.3%}, recall {metrics_eval.recall():.3%}"
+        )

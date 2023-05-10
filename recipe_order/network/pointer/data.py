@@ -31,7 +31,7 @@ class DataBatchPointer:
     original_size: list[torch.Size] = field(kw_only=True)
     batch_size: int = field(kw_only=True)
     max_size: tuple[int, int] = field(kw_only=True)
-    
+
     id: list[int] = field(kw_only=True)
     id_label: list[str] = field(kw_only=True)
 
@@ -62,23 +62,25 @@ class DataBatchPointer:
             return torch.nn.functional.pad(
                 t,
                 (0, max_size_token - t.shape[1], 0, max_size_step - t.shape[0]),
-                value=0.
+                value=0.0,
             )
 
         def pad_target(t: torch.Tensor) -> torch.Tensor:
             return torch.nn.functional.pad(
                 t,
                 (0, max_size_step - t.shape[0], 0, max_size_step - t.shape[0]),
-                value=0.
+                value=0.0,
             )
 
         original_size = [datum.input_ids.shape for datum in data]
 
         input_ids = torch.stack([pad_sentence(datum.input_ids) for datum in data])
-        attention_mask = torch.stack([pad_sentence(datum.attention_mask) for datum in data])
-        
+        attention_mask = torch.stack(
+            [pad_sentence(datum.attention_mask) for datum in data]
+        )
+
         target = torch.stack([pad_target(datum.target) for datum in data])
-        
+
         return DataBatchPointer(
             original_size=original_size,
             batch_size=len(data),
@@ -90,17 +92,24 @@ class DataBatchPointer:
             target=target,
         )
 
+
 class DatasetPointer(DatasetMmres, Dataset[DataMmres]):
-    def __init__(self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast) -> None:
+    def __init__(
+        self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast
+    ) -> None:
         super().__init__(option, tokenizer)
 
     def __getitem__(self, index: int):
         line = self.df.loc[index]
 
         pad_size = max([len(sent) for sent in line["input_ids"]])
-        
-        input_ids = torch.stack([pad_to(sent, to=pad_size, value=0) for sent in line["input_ids"]])
-        attention_mask = torch.stack([pad_to(sent, to=pad_size, value=0) for sent in line["attention_mask"]])
+
+        input_ids = torch.stack(
+            [pad_to(sent, to=pad_size, value=0) for sent in line["input_ids"]]
+        )
+        attention_mask = torch.stack(
+            [pad_to(sent, to=pad_size, value=0) for sent in line["attention_mask"]]
+        )
 
         datum = DataMmres(
             id=index,

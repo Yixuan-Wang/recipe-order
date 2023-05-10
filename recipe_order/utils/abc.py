@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import ClassVar
 
+
 class MaskedMapping(Mapping):
     NOT_MASKED: ClassVar[list[str]] = []
 

@@ -15,6 +15,7 @@ from utils.stub import dc_copy_shallow
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerFast
 
+
 @dataclass
 class DataMmres:
     id: int = field(kw_only=True)
@@ -41,6 +42,7 @@ class DataMmres:
     def collate_one(data):
         return data
 
+
 @dataclass
 class DataMmresList:
     id: int = field(kw_only=True)
@@ -57,14 +59,16 @@ class DataMmresList:
         cp = dc_copy_shallow(self)
         cp.view = view
         return cp
-    
+
     def __len__(self):
         return len(self.input_ids)
+
 
 class DatasetMmresOption(TypedDict):
     max_graph_size: int
     min_graph_size: int
     seed: Optional[int]
+
 
 class DatasetMmres:
     def __init__(self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast):
@@ -72,7 +76,7 @@ class DatasetMmres:
         self.rng = np.random.default_rng(option["seed"] if "seed" in option else None)
         self.tokenizer = tokenizer
         self.df = self.init_dataframe()
-    
+
     def init_dataframe(self):
         df = pd.read_json(shared.env.PATH_DATA_MMRES)
 
@@ -80,41 +84,42 @@ class DatasetMmres:
         #     df["shuffle_instr"] = df.apply(self.shuffle_graph_order, axis=1) # type: ignore
 
         df["graph_size"] = df["instrs"].apply(len)
-        df = df[(df["graph_size"] <= self.option["max_graph_size"]) & (df["graph_size"] >= self.option["min_graph_size"]) & (df["edges"].apply(len) != 0)].reset_index(drop=True)
+        df = df[
+            (df["graph_size"] <= self.option["max_graph_size"])
+            & (df["graph_size"] >= self.option["min_graph_size"])
+            & (df["edges"].apply(len) != 0)
+        ].reset_index(drop=True)
 
-        df["adj"] = pd.Series(graph.get_adj_matrix_from_edges(
-            edges=edges,
-            graph_size=graph_size,
-        ) for edges, graph_size in zip(df["edges"], df["graph_size"]))
+        df["adj"] = pd.Series(
+            graph.get_adj_matrix_from_edges(
+                edges=edges,
+                graph_size=graph_size,
+            )
+            for edges, graph_size in zip(df["edges"], df["graph_size"])
+        )
 
         def tokenize(input: list[str]):
             result = self.tokenizer(input, return_token_type_ids=False)
             return {
-                k: list(map(torch.tensor, v))
-                    if isinstance(v, list)
-                    else v
-                for k, v
-                in result.items()
+                k: list(map(torch.tensor, v)) if isinstance(v, list) else v
+                for k, v in result.items()
             }
 
         df = df.join(pd.DataFrame.from_records(df["instrs"].apply(tokenize)))
-        
+
         return df
-    
+
     def shuffle_graph_order(self, series: pd.Series):
         instrs: list[str]
         edges: list[list[int]]
         instrs, edges = series["instrs"], series["edges"]
 
         n = len(instrs)
-        indices = (np.arange(n) + self.rng.normal(0., n / 6, n)).argsort()
-        indice_map = { fro: to for to, fro in enumerate(indices) }
+        indices = (np.arange(n) + self.rng.normal(0.0, n / 6, n)).argsort()
+        indice_map = {fro: to for to, fro in enumerate(indices)}
 
         shuffled_instrs = list(map(instrs.__getitem__, indices))
-        shuffled_edges = [
-            list(map(indice_map.__getitem__, edge))
-            for edge in edges
-        ]
+        shuffled_edges = [list(map(indice_map.__getitem__, edge)) for edge in edges]
 
         series["instrs"], series["edges"] = shuffled_instrs, shuffled_edges
         return indices

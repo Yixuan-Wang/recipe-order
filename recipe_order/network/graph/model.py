@@ -113,27 +113,21 @@ class ModelGraphIsomorphism(nn.Module):
         gin_count = len(option.gin_layer)
 
         self.gins = nn.ModuleList(
-            ModelGraphIsomorphismOne(option, k)
-            for k in range(gin_count)
+            ModelGraphIsomorphismOne(option, k) for k in range(gin_count)
         )
         self.fuse = nn.Sequential(
             Rearrange("setence k readout -> sentence (k readout)"),
             nn.Linear(
-                in_features=gin_count*option.gin_hidden_size,
+                in_features=gin_count * option.gin_hidden_size,
                 out_features=1,
             ),
         )
 
     def forward(self, graphs: Iterable[dgl.DGLGraph]):
         # einops.pack()
-        graph_readouts = [
-            network(graph)
-            for network, graph in zip(self.gins, graphs)
-        ]
+        graph_readouts = [network(graph) for network, graph in zip(self.gins, graphs)]
 
         score: torch.Tensor = self.fuse(graph_readouts)
-        prediction = score.argsort(descending=True) # sentence -> sentence
+        prediction = score.argsort(descending=True)  # sentence -> sentence
 
         # this is not ordering?
-        
-        

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 import torch
 
+
 class MetricsClassificationResult(TypedDict):
     precision: float
     recall: float
@@ -11,7 +12,7 @@ class MetricsClassificationResult(TypedDict):
 
 
 @dataclass
-class MetricsClassification():
+class MetricsClassification:
     total: int = field(kw_only=True, default=0)
     """Number of total elements."""
 
@@ -23,7 +24,7 @@ class MetricsClassification():
 
     true_positive: int = field(kw_only=True, default=0)
     """Number of predicted concerned elements that matches."""
-    
+
     relevant: int = field(kw_only=True, default=0)
     """Number of real concerned elements."""
 
@@ -34,11 +35,11 @@ class MetricsClassification():
             raise ValueError(rhs)
         else:
             return MetricsClassification(
-                total=self.total+rhs.total,
-                true=self.true+rhs.true,
-                true_positive=self.true_positive+rhs.true_positive,
-                positive=self.positive+rhs.positive,
-                relevant=self.relevant+rhs.relevant,
+                total=self.total + rhs.total,
+                true=self.true + rhs.true,
+                true_positive=self.true_positive + rhs.true_positive,
+                positive=self.positive + rhs.positive,
+                relevant=self.relevant + rhs.relevant,
             )
 
     def accuracy(self):
@@ -49,7 +50,7 @@ class MetricsClassification():
 
     def recall(self):
         return float(torch.div(self.true_positive, self.relevant))
-    
+
     def calc(self) -> MetricsClassificationResult:
         p = self.precision()
         r = self.recall()
@@ -60,4 +61,4 @@ class MetricsClassification():
             "recall": r,
             "f1": f1,
             "accuracy": self.accuracy(),
-        } 
+        }

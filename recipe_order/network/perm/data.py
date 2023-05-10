@@ -31,6 +31,7 @@ from utils.stub import pad_to
 #             datum_view.view = view
 #             return datum_view
 
+
 @dataclass
 class DataBatchPerm:
     # original_size: list[torch.Size] = field(kw_only=True)
@@ -55,20 +56,21 @@ class DataBatchPerm:
             "attention_mask": self.attention_mask,
             "token_type_ids": self.token_type_ids,
         }
-    
+
     def move(self, device: torch.device):
         self.input_ids = self.input_ids.to(device)
         self.attention_mask = self.attention_mask.to(device)
         self.token_type_ids = self.token_type_ids.to(device)
         self.target = self.target.to(device)
 
+
 class DatasetPerm(DatasetMmres, Dataset[DataMmresList]):
     def __init__(self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast):
         super().__init__(option, tokenizer)
-    
+
     def init_tokenizer(self):
         return AutoTokenizer.from_pretrained(shared.env.PRETRAINED_MODEL_PERM)
-    
+
     def __getitem__(self, index: int):
         line = self.df.loc[index]
 
@@ -127,23 +129,23 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
             else:
                 all_views[-1].append(residual)
                 cur_length += length
-        
-        if len(all_views[-1]) == 0: all_views.pop()
+
+        if len(all_views[-1]) == 0:
+            all_views.pop()
 
         return all_views
-    
+
     def __getitem__(self, idx: int) -> list[DataMmresList]:
-        l =  [
+        l = [
             self.subset.dataset[idx_datum]
             if isinstance(idx_datum, int)
             else self.subset.dataset[idx_datum[0]].with_view(idx_datum[1])
-            for idx_datum in
-            self.indices[idx]
+            for idx_datum in self.indices[idx]
         ]
-        assert not len(l) > self.batch_max_len 
+        assert not len(l) > self.batch_max_len
 
         return l
-    
+
     def __len__(self) -> int:
         return len(self.indices)
 
@@ -168,10 +170,17 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
 
             for i, j in _:
                 input_ids = torch.concat((datum.input_ids[i], datum.input_ids[j][1:]))
-                attention_mask = torch.concat((datum.attention_mask[i], datum.attention_mask[j][1:]))
-                token_type_ids = torch.ones((ilen := datum.input_ids[i].shape[-1]) + datum.input_ids[j].shape[-1] - 1, dtype=torch.int)
+                attention_mask = torch.concat(
+                    (datum.attention_mask[i], datum.attention_mask[j][1:])
+                )
+                token_type_ids = torch.ones(
+                    (ilen := datum.input_ids[i].shape[-1])
+                    + datum.input_ids[j].shape[-1]
+                    - 1,
+                    dtype=torch.int,
+                )
                 token_type_ids[:ilen] = 0
-                target: int = reachability[i, j].item() # type: ignore
+                target: int = reachability[i, j].item()  # type: ignore
 
                 all_input_ids.append(input_ids)
                 all_attention_mask.append(attention_mask)
@@ -186,21 +195,23 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
                 "target": all_target,
                 "pair_idx": all_pair_idx,
             }
-        
+
         regrouped = regroup([permute_one(idx, datum) for idx, datum in enumerate(data)])
 
         max_size_token = max(tokens.shape[0] for tokens in regrouped["input_ids"])
 
         def pad_sentence(t: torch.Tensor) -> torch.Tensor:
             return torch.nn.functional.pad(
-                t,
-                (0, max_size_token - t.shape[-1]),
-                value=0.
+                t, (0, max_size_token - t.shape[-1]), value=0.0
             )
-        
+
         input_ids = torch.stack([pad_sentence(t) for t in regrouped["input_ids"]])
-        attention_mask = torch.stack([pad_sentence(t) for t in regrouped["attention_mask"]])
-        token_type_ids = torch.stack([pad_sentence(t) for t in regrouped["token_type_ids"]])
+        attention_mask = torch.stack(
+            [pad_sentence(t) for t in regrouped["attention_mask"]]
+        )
+        token_type_ids = torch.stack(
+            [pad_sentence(t) for t in regrouped["token_type_ids"]]
+        )
         target = torch.tensor(regrouped["target"], dtype=torch.int64)
 
         id = [datum.id for datum in data]

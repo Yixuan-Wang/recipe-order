@@ -310,17 +310,17 @@ class Perm(Inferable):
 
         max_token_len = max([len(steps) for steps in input])
 
-        result_matrix = torch.zeros((len(input), max_token_len, max_token_len), dtype=torch.int32)
+        result_matrix = torch.zeros((len(input), max_token_len, max_token_len))
 
-        for _, batch in enumerate(dataloader):
-            batch: data.DataBatchPerm
+        with torch.no_grad():
+            for _, batch in enumerate(dataloader):
+                batch: data.DataBatchPerm
 
-            batch.move(self.device)
-            prediction: torch.Tensor = self.model(batch)
-            prediction = prediction.argmax(-1)
+                batch.move(self.device)
+                prediction: torch.Tensor = self.model(batch)
 
-            for (z, i, j), v in zip(batch.pair_idx, prediction):
-                if v == 1:
-                    result_matrix[z, i, j] = 1
+                for (idx, i, j), t in zip(batch.pair_idx, prediction):
+                    v = t.argmax(-1)
+                    result_matrix[idx, i, j] = 0. if v == 0 else t[1]
         
         return result_matrix

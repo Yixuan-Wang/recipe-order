@@ -1,6 +1,9 @@
 from __future__ import annotations
+from collections.abc import Sequence
 
 from dataclasses import field, dataclass
+from functools import partial
+from itertools import starmap
 from sched import scheduler
 from typing import Optional, cast
 
@@ -19,11 +22,13 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.status import Status
 
-from shared.traindata import DataMmresList
+from shared.abc import Inferable
+from shared.traindata import DataRawList
 from shared.console import console
 import shared.env as env
 from utils.baroque import BaroqueProgress
-
+from utils.stub import nonnull, tokenize
+from utils.functional import regroup
 
 from . import data, model, metrics
 
@@ -47,7 +52,7 @@ class PermTrainOption:
     shuffle: bool = field(kw_only=True)
 
 
-class Perm:
+class Perm(Inferable):
     option: PermOption
 
     model: model.ModelPerm
@@ -55,9 +60,9 @@ class Perm:
     tokenizer: PreTrainedTokenizerFast
 
     dataset: data.DatasetPerm
-    dataset_train: Subset[DataMmresList]
-    dataset_valid: Subset[DataMmresList]
-    dataset_test: Subset[DataMmresList]
+    dataset_train: Subset[DataRawList]
+    dataset_valid: Subset[DataRawList]
+    dataset_test: Subset[DataRawList]
 
     def __init__(self, option: PermOption, *, state_dict=None) -> None:
         self.option = option
@@ -179,7 +184,7 @@ class Perm:
                     prediction = self.model(batch)
 
                     loss = metrics_train.accept(
-                        prediction=prediction, target=batch.target, batch=batch
+                        prediction=prediction, target=nonnull(batch.target), batch=batch
                     )
                     loss.backward()
                     optimizer.step()
@@ -274,3 +279,48 @@ class Perm:
         console.log(
             f"test: loss {metrics_eval.loss:.3f}, accuracy {metrics_eval.accuracy():.3%}, precision {metrics_eval.precision():.3%}, recall {metrics_eval.recall():.3%}"
         )
+
+    def infer(self, input: Sequence[Sequence[str]]) -> torch.Tensor:     
+        with Status("Preparing data..."):
+            def tokenize_sentence(idx: int, steps: Sequence[str]):
+                tokenize_result = tokenize(self.tokenizer, steps) # type: ignore
+                return DataRawList(
+                    id=idx,
+                    id_label=str(idx),
+                    input_ids=tokenize_result["input_ids"],
+                    attention_mask=tokenize_result["attention_mask"],
+                    target=None,
+                )
+            
+            all_data_raw_lists = list(starmap(tokenize_sentence, enumerate(input)))
+            subset = Subset(all_data_raw_lists, list(range(len(all_data_raw_lists)))) # type: ignore
+            dataset = data.DatasetPermBalanced(subset, 32)
+            dataloader = cast(
+                DataLoader[data.DataBatchPerm],
+                DataLoader(
+                    dataset,
+                    batch_size=1,
+                    shuffle=False,
+                    collate_fn=data.DatasetPermBalanced.collate,
+                )
+            )
+
+        self.model.eval()
+        self.set_device()
+
+        max_token_len = max([len(steps) for steps in input])
+
+        result_matrix = torch.zeros((len(input), max_token_len, max_token_len), dtype=torch.int32)
+
+        for _, batch in enumerate(dataloader):
+            batch: data.DataBatchPerm
+
+            batch.move(self.device)
+            prediction: torch.Tensor = self.model(batch)
+            prediction = prediction.argmax(-1)
+
+            for (z, i, j), v in zip(batch.pair_idx, prediction):
+                if v == 1:
+                    result_matrix[z, i, j] = 1
+        
+        return result_matrix

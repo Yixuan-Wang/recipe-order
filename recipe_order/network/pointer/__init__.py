@@ -15,7 +15,7 @@ from rich.layout import Layout
 from rich.status import Status
 
 from shared.abc import Inferable
-from shared.traindata import DataMmres
+from shared.traindata import DataRaw
 import shared.graph as graph
 import shared.env
 from utils.baroque import BaroqueProgress
@@ -56,9 +56,9 @@ class Pointer:
     tokenizer: PreTrainedTokenizerFast
 
     dataset: data.DatasetPointer
-    dataset_train: Subset[train.pointer.DataMmres.DataMmres]
-    dataset_valid: Subset[train.pointer.DataMmres.DataMmres]
-    dataset_test: Subset[train.pointer.DataMmres.DataMmres]
+    dataset_train: Subset[train.pointer.DataRaw.DataRaw]
+    dataset_valid: Subset[train.pointer.DataRaw.DataRaw]
+    dataset_test: Subset[train.pointer.DataRaw.DataRaw]
 
     def __init__(
         self, option: PointerOption, state_dict: Optional[Mapping[str, Any]] = None
@@ -245,7 +245,7 @@ class Pointer:
             shuffle=False,
             collate_fn=data.DataBatchPointer.collate,
         )
-        dataloader_eval: DataLoader[DataMmres]
+        dataloader_eval: DataLoader[DataRaw]
 
         task_eval = (
             progress.add_task("Evaling...", total=len(dataloader_eval))

@@ -5,5 +5,5 @@ import torch
 
 
 class Inferable(Protocol):
-    def infer(self, sentence: Sequence[str]) -> torch.Tensor:
+    def infer(self, sentences: Sequence[str]) -> torch.Tensor:
         ...

@@ -10,20 +10,20 @@ import shared.graph as graph
 
 from dataclasses import dataclass, field
 
-from utils.stub import dc_copy_shallow
+from utils.stub import dc_copy_shallow, tokenize
 
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerFast
 
 
 @dataclass
-class DataMmres:
+class DataRaw:
     id: int = field(kw_only=True)
     id_label: str = field(kw_only=True)
 
     input_ids: torch.Tensor = field(kw_only=True)
     attention_mask: torch.Tensor = field(kw_only=True)
-    target: torch.Tensor = field(kw_only=True)
+    target: Optional[torch.Tensor] = field(kw_only=True)
 
     # NOT_MASKED: ClassVar[list[str]] = ["input_ids", "attention_mask"]
 
@@ -36,7 +36,8 @@ class DataMmres:
     def move(self, device: torch.device):
         self.input_ids = self.input_ids.to(device)
         self.attention_mask = self.attention_mask.to(device)
-        self.target = self.target.to(device)
+        if self.target is not None: 
+            self.target = self.target.to(device)
 
     @staticmethod
     def collate_one(data):
@@ -44,13 +45,13 @@ class DataMmres:
 
 
 @dataclass
-class DataMmresList:
+class DataRawList:
     id: int = field(kw_only=True)
     id_label: str = field(kw_only=True)
 
     input_ids: list[torch.Tensor] = field(kw_only=True)
     attention_mask: list[torch.Tensor] = field(kw_only=True)
-    target: torch.Tensor = field(kw_only=True)
+    target: Optional[torch.Tensor] = field(kw_only=True)
 
     view: slice = field(kw_only=True, default_factory=lambda: slice(None))
     """View on **permutation** of the list."""
@@ -97,13 +98,6 @@ class DatasetMmres:
             )
             for edges, graph_size in zip(df["edges"], df["graph_size"])
         )
-
-        def tokenize(input: list[str]):
-            result = self.tokenizer(input, return_token_type_ids=False)
-            return {
-                k: list(map(torch.tensor, v)) if isinstance(v, list) else v
-                for k, v in result.items()
-            }
 
         df = df.join(pd.DataFrame.from_records(df["instrs"].apply(tokenize)))
 

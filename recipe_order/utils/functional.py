@@ -28,15 +28,15 @@ def take(iter: Iterator[T], n: int) -> Iterator[T]:
     return map(operator.itemgetter(0), zip(iter, range(n)))
 
 
-def regroup(mappings: Sequence[Mapping[K, Sequence[V]]]) -> Mapping[K, list[V]]:
+def regroup(seq: Sequence[Mapping[K, Sequence[V]]]) -> Mapping[K, list[V]]:
     """Flatten a sequence of mappings to mappings of sequences."""
 
-    if len(mappings) == 0:
+    if len(seq) == 0:
         return {}
 
-    keys = mappings[0].keys()
+    keys = seq[0].keys()
     result = {key: [] for key in keys}
-    for item in mappings:
+    for item in seq:
         for key, val in item.items():
             result[key].extend(val)
     return result

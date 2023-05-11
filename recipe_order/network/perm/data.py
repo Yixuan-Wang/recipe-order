@@ -11,25 +11,10 @@ from transformers import AutoTokenizer, PreTrainedTokenizerFast
 from torch.utils.data import Dataset, IterableDataset, Subset
 from shared.graph import reachability_matrix
 
-from shared.traindata import DataMmresList, DatasetMmres, DatasetMmresOption
+from shared.traindata import DataRawList, DatasetMmres, DatasetMmresOption
 import shared.env
 from utils.functional import regroup, take
-from utils.stub import pad_to
-
-# @dataclass
-# class DataMmresList(DataMmresList):
-
-
-#     @classmethod
-#     def new(cls, datum: DataMmresList | DataMmresList, view: Optional[slice] = None):
-#         view = view or slice(None)
-#         if isinstance(datum, DataMmresList):
-#             datum.view = view
-#             return datum
-#         else:
-#             datum_view =  DataMmresList(**asdict_shallow(datum))
-#             datum_view.view = view
-#             return datum_view
+from utils.stub import pad_to, nonnull
 
 
 @dataclass
@@ -48,7 +33,7 @@ class DataBatchPerm:
     attention_mask: torch.Tensor = field(kw_only=True)
     token_type_ids: torch.Tensor = field(kw_only=True)
 
-    target: torch.Tensor = field(kw_only=True)
+    target: Optional[torch.Tensor] = field(kw_only=True)
 
     def get_input(self):
         return {
@@ -61,10 +46,12 @@ class DataBatchPerm:
         self.input_ids = self.input_ids.to(device)
         self.attention_mask = self.attention_mask.to(device)
         self.token_type_ids = self.token_type_ids.to(device)
-        self.target = self.target.to(device)
+
+        if self.target:
+            self.target = self.target.to(device)
 
 
-class DatasetPerm(DatasetMmres, Dataset[DataMmresList]):
+class DatasetPerm(DatasetMmres, Dataset[DataRawList]):
     def __init__(self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast):
         super().__init__(option, tokenizer)
 
@@ -74,7 +61,7 @@ class DatasetPerm(DatasetMmres, Dataset[DataMmresList]):
     def __getitem__(self, index: int):
         line = self.df.loc[index]
 
-        datum = DataMmresList(
+        datum = DataRawList(
             id=index,
             id_label=line["id"],
             input_ids=line["input_ids"],
@@ -88,8 +75,8 @@ class DatasetPerm(DatasetMmres, Dataset[DataMmresList]):
         return len(self.df)
 
 
-class DatasetPermBalanced(Dataset[list[DataMmresList]]):
-    def __init__(self, subset: Subset[DataMmresList], batch_max_len: int):
+class DatasetPermBalanced(Dataset[list[DataRawList]]):
+    def __init__(self, subset: Subset[DataRawList], batch_max_len: int):
         self.subset = subset
         self.batch_max_len = batch_max_len
         self.indices = self.balance()
@@ -135,7 +122,7 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
 
         return all_views
 
-    def __getitem__(self, idx: int) -> list[DataMmresList]:
+    def __getitem__(self, idx: int) -> list[DataRawList]:
         l = [
             self.subset.dataset[idx_datum]
             if isinstance(idx_datum, int)
@@ -150,11 +137,11 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
         return len(self.indices)
 
     @staticmethod
-    def collate(one_data: list[list[DataMmresList]]) -> DataBatchPerm:
+    def collate(one_data: list[list[DataRawList]]) -> DataBatchPerm:
         assert len(one_data) == 1
         data = one_data[0]
 
-        def permute_one(idx: int, datum: DataMmresList):
+        def permute_one(idx: int, datum: DataRawList):
             step = len(datum.input_ids)
 
             all_input_ids: list[torch.Tensor] = []
@@ -166,7 +153,10 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
             _ = itertools.permutations(range(step), 2)
             _ = itertools.islice(_, datum.view.start, datum.view.stop)
 
-            reachability = reachability_matrix(datum.target)
+            if datum.target is not None:
+                reachability = reachability_matrix(datum.target)
+            else:
+                reachability = None
 
             for i, j in _:
                 input_ids = torch.concat((datum.input_ids[i], datum.input_ids[j][1:]))
@@ -180,12 +170,18 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
                     dtype=torch.int,
                 )
                 token_type_ids[:ilen] = 0
-                target: int = reachability[i, j].item()  # type: ignore
+
+                if reachability is not None:
+                    target: Optional[int] = reachability[i, j].item()  # type: ignore
+                else:
+                    target = None
 
                 all_input_ids.append(input_ids)
                 all_attention_mask.append(attention_mask)
                 all_token_type_ids.append(token_type_ids)
-                all_target.append(target)
+
+                if target is not None:
+                    all_target.append(target)
                 all_pair_idx.append((idx, i, j))
 
             return {
@@ -212,7 +208,11 @@ class DatasetPermBalanced(Dataset[list[DataMmresList]]):
         token_type_ids = torch.stack(
             [pad_sentence(t) for t in regrouped["token_type_ids"]]
         )
-        target = torch.tensor(regrouped["target"], dtype=torch.int64)
+
+        if len(regrouped["target"]):
+            target = torch.tensor(regrouped["target"], dtype=torch.int32)
+        else:
+            target = None
 
         id = [datum.id for datum in data]
         id_label = [datum.id_label for datum in data]

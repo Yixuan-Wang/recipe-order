@@ -44,7 +44,7 @@ class DataBatchPointer:
     def move(self, device: torch.device, device_subsidary: torch.device):
         self.input_ids = self.input_ids.to(device_subsidary)
         self.attention_mask = self.attention_mask.to(device_subsidary)
-        if self.target:
+        if self.target is not None:
             self.target = self.target.to(device)
 
     @staticmethod

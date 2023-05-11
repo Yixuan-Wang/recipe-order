@@ -99,6 +99,13 @@ class DatasetMmres:
             for edges, graph_size in zip(df["edges"], df["graph_size"])
         )
 
+        def tokenize(input: list[str]):
+            result = self.tokenizer(input, return_token_type_ids=False)
+            return {
+                k: list(map(torch.tensor, v)) if isinstance(v, list) else v
+                for k, v in result.items()
+            }
+
         df = df.join(pd.DataFrame.from_records(df["instrs"].apply(tokenize)))
 
         return df

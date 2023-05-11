@@ -32,19 +32,20 @@ def threshold(threshold: float, mat: Tensor):
     return mat * (mat > threshold).to(mat.dtype)
 
 
-def prune_matrix(adj: Tensor):
-    adj = adj - adj.tril()
-    _ = itertools.accumulate(
-        itertools.repeat(adj), torch.matmul if adj.ndim == 2 else torch.bmm, initial=adj
-    )
-    _ = take(_, adj.shape[-2])
-    one = (sum(_, start=torch.zeros_like(adj)) == 1).to(adj.dtype)
+# def prune_matrix(adj: Tensor):
+#     adj = adj - adj.tril()
+#     _ = itertools.accumulate(
+#         itertools.repeat(adj), torch.matmul if adj.ndim == 2 else torch.bmm, initial=adj
+#     )
+#     _ = take(_, adj.shape[-2])
+#     one = (sum(_, start=torch.zeros_like(adj)) == 1).to(adj.dtype)
 
-    return one
+#     return one
 
 
-def build_graph_from_prediction(threshold: float, mat: Tensor):
-    return prune_matrix((mat > threshold).to(mat.dtype))
+def apply_threshold(threshold: float, mat: Tensor):
+    return (mat > threshold).to(mat.dtype)
+    # don't prune matrix
 
 
 def reachability_matrix(adj: Tensor):

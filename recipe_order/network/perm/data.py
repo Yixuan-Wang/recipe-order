@@ -47,7 +47,7 @@ class DataBatchPerm:
         self.attention_mask = self.attention_mask.to(device)
         self.token_type_ids = self.token_type_ids.to(device)
 
-        if self.target:
+        if self.target is not None:
             self.target = self.target.to(device)
 
 
@@ -150,13 +150,13 @@ class DatasetPermBalanced(Dataset[list[DataRawList]]):
             all_target: list[int] = []
             all_pair_idx: list[tuple[int, int, int]] = []
 
-            _ = itertools.permutations(range(step), 2)
-            _ = itertools.islice(_, datum.view.start, datum.view.stop)
-
             if datum.target is not None:
                 reachability = reachability_matrix(datum.target)
             else:
                 reachability = None
+
+            _ = itertools.permutations(range(step), 2)
+            _ = itertools.islice(_, datum.view.start, datum.view.stop)
 
             for i, j in _:
                 input_ids = torch.concat((datum.input_ids[i], datum.input_ids[j][1:]))

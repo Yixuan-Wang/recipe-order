@@ -25,6 +25,6 @@ class MetricsPerm(MetricsClassification):
         self.positive += (positive := goal_prediction != 0).sum().item()  # type: ignore
         self.true_positive += (positive & relevant).sum().item()  # type: ignore
 
-        loss = torch.nn.functional.cross_entropy(prediction, goal_target)
+        loss = torch.nn.functional.cross_entropy(prediction, goal_target.to(dtype=torch.int64))
         self.loss = loss.item()
         return loss

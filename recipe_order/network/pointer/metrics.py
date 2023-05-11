@@ -29,31 +29,29 @@ class MetricsPointer(MetricsClassification):
             ]
         ).to(device)
 
-        if shared.env.INSTRUCTION_IS_ORDERED:
-            folded_target = target
-            goal_target = graph.reachability_matrix(target)
+        goal_target = graph.reachability_matrix(target)
 
-            folded_prediction = graph.build_graph_from_prediction(0.5, prediction)
-        else:
-            folded_target = graph.fold_matrix_to_triu(target)
-            goal_target = graph.fold_matrix_to_triu(graph.reachability_matrix(target))
+        threshold_prediction = graph.apply_threshold(0.5, prediction)
+        # if shared.env.INSTRUCTION_IS_ORDERED:
+        # else:
+        #     folded_target = graph.fold_matrix_to_triu(target)
+        #     goal_target = graph.fold_matrix_to_triu(graph.reachability_matrix(target))
 
-            folded_prediction = graph.fold_matrix_to_triu(
-                graph.build_graph_from_prediction(
-                    0.5, graph.unfold_matrix_from_triu(prediction)
-                )
-            )
+        #     folded_prediction = graph.fold_matrix_to_triu(
+        #         graph.build_graph_from_prediction(
+        #             0.5, graph.unfold_matrix_from_triu(prediction)
+        #         )
+        #     )
 
         ma_goal_prediction = prediction.masked_select(prediction_mask)
         ma_goal_target = goal_target.masked_select(prediction_mask)
-        ma_folded_prediction = folded_prediction.masked_select(prediction_mask)
-        ma_folded_target = folded_target.masked_select(prediction_mask)
+        ma_threshold_prediction = threshold_prediction.masked_select(prediction_mask)
 
-        self.true += (ma_folded_prediction == ma_folded_target).sum().item()  # type: ignore
-        self.total += ma_folded_target.shape[-1]
+        self.true += (ma_threshold_prediction == ma_goal_target).sum().item()  # type: ignore
+        self.total += ma_goal_target.shape[-1]
 
-        self.relevant += (relevant := (ma_folded_target == 1)).sum().item()  # type: ignore
-        self.positive += (positive := (ma_folded_prediction == 1)).sum().item()  # type: ignore
+        self.relevant += (relevant := (ma_goal_target == 1)).sum().item()  # type: ignore
+        self.positive += (positive := (ma_threshold_prediction == 1)).sum().item()  # type: ignore
         self.true_positive += (positive & relevant).sum().item()  # type: ignore
 
         loss = torch.nn.functional.mse_loss(ma_goal_prediction, ma_goal_target)

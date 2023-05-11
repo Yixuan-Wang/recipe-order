@@ -182,7 +182,7 @@ class DatasetPermBalanced(Dataset[list[DataRawList]]):
 
                 if target is not None:
                     all_target.append(target)
-                all_pair_idx.append((idx, i, j))
+                all_pair_idx.append((datum.id, i, j))
 
             return {
                 "input_ids": all_input_ids,

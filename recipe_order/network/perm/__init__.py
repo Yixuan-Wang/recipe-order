@@ -2,14 +2,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from dataclasses import field, dataclass
-from functools import partial
 from itertools import starmap
-from sched import scheduler
 from typing import Optional, cast
 
-from torch.utils.data import Dataset, DataLoader, Subset, random_split
+from torch.utils.data import DataLoader, Subset, random_split
 import torch
-import transformers
 from transformers import (
     get_linear_schedule_with_warmup,
     PreTrainedTokenizerFast,
@@ -17,9 +14,6 @@ from transformers import (
 )
 
 from rich.progress import Progress
-from rich.console import Group
-from rich.live import Live
-from rich.layout import Layout
 from rich.status import Status
 
 from shared.abc import Inferable
@@ -28,7 +22,6 @@ from shared.console import console
 import shared.env as env
 from utils.baroque import BaroqueProgress
 from utils.stub import nonnull, tokenize
-from utils.functional import regroup
 
 from . import data, model, metrics
 
@@ -88,7 +81,6 @@ class Perm(Inferable):
             {
                 "max_graph_size": 16,
                 "min_graph_size": 3,
-                "seed": None,
             },
             self.tokenizer,
         )

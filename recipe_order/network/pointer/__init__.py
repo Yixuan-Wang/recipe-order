@@ -5,7 +5,7 @@ from random import shuffle
 from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
 
 import torch
-from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.data import Dataset, DataLoader, Subset, random_split
 from transformers import get_linear_schedule_with_warmup, AutoTokenizer
 
 from rich.progress import Progress
@@ -19,6 +19,7 @@ from shared.traindata import DataRaw
 import shared.graph as graph
 import shared.env
 from utils.baroque import BaroqueProgress
+from utils.stub import nonnull
 
 from . import data, model, metrics
 
@@ -34,7 +35,9 @@ class PointerOption:
     randomize_dataset: bool = field(kw_only=True)
     split_dataset_ratio: tuple[float, float, float] = field(
         kw_only=True, default=(0.8, 0.1, 0.1)
-    )
+    ) 
+    shuffle_instructions_and_do_bidi: bool = field(kw_only=True, default=False)
+    shuffle_instructions_seed: Optional[int] = field(kw_only=True, default=None)
 
 
 @dataclass
@@ -55,10 +58,10 @@ class Pointer:
 
     tokenizer: PreTrainedTokenizerFast
 
-    dataset: data.DatasetPointer
-    dataset_train: Subset[train.pointer.DataRaw.DataRaw]
-    dataset_valid: Subset[train.pointer.DataRaw.DataRaw]
-    dataset_test: Subset[train.pointer.DataRaw.DataRaw]
+    dataset: Dataset[DataRaw]
+    dataset_train: Subset[DataRaw]
+    dataset_valid: Subset[DataRaw]
+    dataset_test: Subset[DataRaw]
 
     def __init__(
         self, option: PointerOption, state_dict: Optional[Mapping[str, Any]] = None
@@ -82,24 +85,26 @@ class Pointer:
     def __init_tokenizer(self) -> PreTrainedTokenizerFast:
         return AutoTokenizer.from_pretrained(shared.env.PRETRAINED_MODEL_POINTER)  # type: ignore
 
-    def __init_dataset(self, option: PointerOption):
+    def __init_dataset(self):
         self.dataset = data.DatasetPointer(
             {
                 "max_graph_size": 16,
                 "min_graph_size": 3,
-                "seed": None,
             },
             self.tokenizer,
         )
 
+        if self.option.shuffle_instructions_and_do_bidi:
+            self.dataset = data.DatasetPointerShuffledBidi(self.dataset)
+
         dataset_split_generator = (
             torch.Generator()
-            if option.randomize_dataset
+            if self.option.randomize_dataset
             else torch.Generator().manual_seed(42)
         )
 
         len_dataset = len(self.dataset)
-        split_count = [int(len_dataset * r) for r in option.split_dataset_ratio]
+        split_count = [int(len_dataset * r) for r in self.option.split_dataset_ratio]
         split_count[-1] += len_dataset - sum(split_count)
 
         self.dataset_train, self.dataset_valid, self.dataset_test = random_split(
@@ -159,7 +164,7 @@ class Pointer:
 
     def train(self, train_option: PointerTrainOption):
         with Status("Initializing dataset...", console=console) as status:
-            self.__init_dataset(self.option)
+            self.__init_dataset()
 
         dataloader_train = cast(
             DataLoader[data.DataBatchPointer],
@@ -205,7 +210,7 @@ class Pointer:
                     prediction = self.model(batch)
 
                     loss = metrics_train.accept(
-                        prediction=prediction, target=batch.target, batch=batch
+                        prediction=prediction, target=nonnull(batch.target), batch=batch
                     )
                     loss.backward()
                     optimizer.step()
@@ -271,7 +276,7 @@ class Pointer:
                 prediction = self.model(batch)
 
                 _ = metrics_eval.accept(
-                    prediction=prediction, target=batch.target, batch=batch
+                    prediction=prediction, target=nonnull(batch.target), batch=batch
                 )
                 if progress is not None and task_eval is not None:
                     progress.advance(task_eval)
@@ -283,7 +288,7 @@ class Pointer:
 
     def test(self):
         with Status("Initializing dataset...", console=console) as status:
-            self.__init_dataset(self.option)
+            self.__init_dataset()
 
         self.set_device()
 

@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-from transformers import AutoTokenizer
 
 from dataclasses import dataclass, field
-import functools
 from typing import TYPE_CHECKING, Optional
 import pandas as pd
+import numpy as np
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 
-import shared.env
-import shared.graph as graph
+from shared import graph
 from shared.traindata import DataRaw, DatasetMmres
 from shared.traindata import DatasetMmresOption
-from utils.abc import MaskedMapping
 from utils.stub import nonnull, pad_to
-from utils.metrics import MetricsClassificationResult
 
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerFast
@@ -111,15 +107,65 @@ class DatasetPointer(DatasetMmres, Dataset[DataRaw]):
             [pad_to(sent, to=pad_size, value=0) for sent in line["attention_mask"]]
         )
 
+        target = graph.reachability_matrix(line["adj"])
+
         datum = DataRaw(
             id=index,
             id_label=line["id"],
             input_ids=input_ids,
             attention_mask=attention_mask,
-            target=line["adj"],
+            target=target,
         )
 
         return datum
 
     def __len__(self):
         return len(self.df)
+
+class DatasetPointerShuffledBidi(Dataset[DataRaw]):
+    def __init__(self, source: DatasetPointer, seed: Optional[int] = None):
+        self.source = source
+        self.source_len = len(source)
+        self.rng = np.random.default_rng(seed)
+        self.shuffles = source.df["instrs"].apply(self.generate_shuffle) # type: ignore
+
+    def generate_shuffle(self, instrs: list[str]):
+        n = len(instrs)
+        index = (torch.arange(n) + self.rng.normal(0.0, n / 6, n)).argsort()
+
+        return index
+    
+    def __len__(self):
+        return self.source_len
+    
+    def __getitem__(self, index: int) -> DataRaw:
+        upper = index < self.source_len
+        if not upper: index //= 2
+
+        datum = self.source[index]
+        shuffle = self.shuffles[index]
+
+        input_ids = datum.input_ids[shuffle, ...]
+        attention_mask = datum.attention_mask[shuffle, ...]
+
+        if datum.target is not None:
+            target = datum.target[shuffle, :][:, shuffle]
+        else:
+            target = None
+
+        if upper:
+            target = target.triu() if target is not None else None
+        else:
+            raise NotImplementedError
+            # input_ids = torch.flip(input_ids, (0,))
+            # attention_mask = torch.flip(attention_mask, (0,))
+            # if target is not None:
+            #     target = torch.flip(target.tril(), (0, 1))
+
+        return DataRaw(
+            id=datum.id,
+            id_label=datum.id_label,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            target=target
+        )

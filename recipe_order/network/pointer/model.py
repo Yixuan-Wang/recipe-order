@@ -329,12 +329,12 @@ class ModelPointer(nn.Module):
 
         self.ptr_embedding_dim = 2048
 
-        self.ptr_w_q = nn.Parameter(
+        self.ptr_w_q = nn.Parameter(  # pyright: ignore [reportPrivateImportUsage]
             torch.empty(self.feature)
-        )  # pyright: ignore [reportPrivateImportUsage]
-        self.ptr_w_k = nn.Parameter(
+        )
+        self.ptr_w_k = nn.Parameter(  # pyright: ignore [reportPrivateImportUsage]
             torch.empty(self.feature)
-        )  # pyright: ignore [reportPrivateImportUsage]
+        )
 
         nn.init.normal_(self.ptr_w_k)
         nn.init.normal_(self.ptr_w_q)

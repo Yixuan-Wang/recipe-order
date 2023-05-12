@@ -51,6 +51,7 @@ def train(
             pointer = Pointer(
                 PointerOption(
                     randomize_dataset=rand,
+                    shuffle_instructions_and_do_bidi=True,
                 )
             )
 
@@ -58,7 +59,7 @@ def train(
                 PointerTrainOption(
                     batch_size=8,
                     learning_rate=5e-5,
-                    weight_decay=weight_decay or 1e-3,
+                    weight_decay=0., #weight_decay or 1e-3,
                     epoch=epoch,
                     warmup_step=warmup_step,
                     shuffle=rand,

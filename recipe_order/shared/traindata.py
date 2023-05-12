@@ -68,13 +68,12 @@ class DataRawList:
 class DatasetMmresOption(TypedDict):
     max_graph_size: int
     min_graph_size: int
-    seed: Optional[int]
 
 
 class DatasetMmres:
     def __init__(self, option: DatasetMmresOption, tokenizer: PreTrainedTokenizerFast):
         self.option = option
-        self.rng = np.random.default_rng(option["seed"] if "seed" in option else None)
+        # self.rng = np.random.default_rng(option["seed"] if "seed" in option else None)
         self.tokenizer = tokenizer
         self.df = self.init_dataframe()
 
@@ -109,18 +108,3 @@ class DatasetMmres:
         df = df.join(pd.DataFrame.from_records(df["instrs"].apply(tokenize)))
 
         return df
-
-    def shuffle_graph_order(self, series: pd.Series):
-        instrs: list[str]
-        edges: list[list[int]]
-        instrs, edges = series["instrs"], series["edges"]
-
-        n = len(instrs)
-        indices = (np.arange(n) + self.rng.normal(0.0, n / 6, n)).argsort()
-        indice_map = {fro: to for to, fro in enumerate(indices)}
-
-        shuffled_instrs = list(map(instrs.__getitem__, indices))
-        shuffled_edges = [list(map(indice_map.__getitem__, edge)) for edge in edges]
-
-        series["instrs"], series["edges"] = shuffled_instrs, shuffled_edges
-        return indices

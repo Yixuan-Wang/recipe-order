@@ -29,7 +29,8 @@ class MetricsPointer(MetricsClassification):
             ]
         ).to(device)
 
-        goal_target = graph.reachability_matrix(target)
+        goal_target = target
+        # reachability matrix is moved to dataset
 
         threshold_prediction = graph.apply_threshold(0.5, prediction)
         # if shared.env.INSTRUCTION_IS_ORDERED:
